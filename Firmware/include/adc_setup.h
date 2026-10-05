@@ -13,13 +13,13 @@ void set_adc_pins(uint8_t input_probe_channel_ADC1, uint8_t output_probe_channel
     };
     ESP_ERROR_CHECK(adc_continuous_new_handle(&adc_config, &handle));
     adc_digi_pattern_config_t inp_settings = {
-        .atten = ADC_ATTEN_DB_11,
+        .atten = ADC_ATTEN_DB_12,
         .channel = input_probe_channel_ADC1,
         .unit = ADC_UNIT_1,
         .bit_width = 12
     };
     adc_digi_pattern_config_t out_settings = {
-        .atten = ADC_11db,
+        .atten = ADC_ATTEN_DB_12,
         .channel = output_probe_channel_ADC1,
         .unit = ADC_UNIT_1,
         .bit_width = 12
@@ -46,7 +46,7 @@ void read_adc(adc_continuous_handle_t handle, uint8_t* buf, uint8_t buf_size, ui
     for(int i=0; i<(int)(*copied_out_len/2); i++){
         channel = (buf[1] & 0b11110000)>>4;
         val_raw = ((uint16_t)(buf[0])) | (uint16_t)((buf[1]&0b00001111)<<8);
-        val = ((float)0.00059)*val_raw;
+        val = ((float)0.0061)*val_raw;
         if(channel == input_probe_channel_ADC1){
            *global_input_val = val;
         } else if(channel == output_probe_channel_ADC1) {

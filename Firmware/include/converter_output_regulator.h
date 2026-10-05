@@ -38,10 +38,12 @@ struct controlSig {
     float drive_sig;
 };
 
-controlSig converter_out_regulator(float out_desired, int buck_state, float* global_input_val, float* global_output_val, float anti_windup_clamp){
+controlSig converter_out_regulator(float out_desired, int buck_state, float* global_input_val, float* global_output_val, float anti_windup_clamp, uint8_t rst){
     float input_voltage = 0;
-    float integral_feedback = 0.0001;
-    float proportional_feedback = 0.001;
+    //float integral_feedback = 0.0001;
+    float integral_feedback = 0;
+    //float proportional_feedback = 0.001;
+    float proportional_feedback = 0;
     float previous_output = 0;
     static float duty_cycle = 0;
     static float integral_term = 0;
@@ -71,8 +73,8 @@ controlSig converter_out_regulator(float out_desired, int buck_state, float* glo
     en = ((differential_int < 5) && previous_output >= 12) ? 0 : 1;
 
     if(en){
-        integral_term = ((buck_state == last_buck_state) && (differential_abs<2.0f)) ? (integral_term + differential): 0;
-        integral_term = min(max(integral_term, -anti_windup_clamp), anti_windup_clamp);
+        integral_term = ((buck_state == last_buck_state) && (differential_abs<2.0f) && (!rst)) ? (integral_term + differential): 0;
+        //integral_term = min(max(integral_term, -anti_windup_clamp), anti_windup_clamp);
         integral_correction = integral_term  * integral_feedback;
         proportional_correction = (differential * proportional_feedback);
         correction_factor = integral_correction + proportional_correction;

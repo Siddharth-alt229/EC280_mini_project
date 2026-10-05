@@ -17,7 +17,7 @@ void set_routing_pins(uint8_t buck_switch_pin, uint8_t boost_switch_pin){
 
     mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_0, &buck_boost_switcher);
 
-    mcpwm_timer_set_resolution(MCPWM_UNIT_0, MCPWM_TIMER_0, 20000000);
+    mcpwm_timer_set_resolution(MCPWM_UNIT_0, MCPWM_TIMER_0, 2000000);
 
     mcpwm_set_frequency(MCPWM_UNIT_0, MCPWM_TIMER_0, 100000);
 
@@ -25,8 +25,8 @@ void set_routing_pins(uint8_t buck_switch_pin, uint8_t boost_switch_pin){
         MCPWM_UNIT_0,
         MCPWM_TIMER_0,
         MCPWM_ACTIVE_HIGH_COMPLIMENT_MODE,
-        10,
-        10
+        1,
+        1
     );
 }
 
@@ -74,7 +74,7 @@ converterState route(float out_desired, long int anti_hysteresis_delay, float* g
     }
 
 
-    last_switching_time = (buck_switch == last_buck_state && boost_switch == last_boost_state) ? last_switching_time : now;
+    last_switching_time = (buck_switch == last_buck_state && boost_switch == last_boost_state) ? last_switching_time : esp_cpu_get_cycle_count();
 
     return converter_state;
 }
