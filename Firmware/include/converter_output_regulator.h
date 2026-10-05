@@ -5,13 +5,17 @@
 #include <driver/ledc.h>
 #include <adc_setup.h>
 
-void set_converter_pins(uint8_t input_probe_channel_ADC1, uint8_t output_probe_channel_ADC1, uint8_t control_pin){
+void set_converter_pins(uint8_t input_probe_channel_ADC1, 
+    uint8_t output_probe_channel_ADC1, 
+    uint8_t control_pin, 
+    uint32_t MOS_SWITCHING_FREQ
+){
 
     ledc_timer_config_t ledc_timer {
         .speed_mode = LEDC_HIGH_SPEED_MODE,
         .duty_resolution = LEDC_TIMER_9_BIT,
         .timer_num = LEDC_TIMER_0,
-        .freq_hz = 100000,
+        .freq_hz = MOS_SWITCHING_FREQ,
         .clk_cfg = LEDC_AUTO_CLK
     };
 
@@ -38,12 +42,17 @@ struct controlSig {
     float drive_sig;
 };
 
-controlSig converter_out_regulator(float out_desired, int buck_state, float* global_input_val, float* global_output_val, float anti_windup_clamp, uint8_t rst){
+controlSig converter_out_regulator(float out_desired, 
+    int buck_state, 
+    float* global_input_val, 
+    float* global_output_val, 
+    float anti_windup_clamp, 
+    uint8_t rst, 
+    float integral_feedback_factor, 
+    float proportional_feedback_factor
+){
+    
     float input_voltage = 0;
-    //float integral_feedback = 0.0001;
-    float integral_feedback = 0;
-    //float proportional_feedback = 0.001;
-    float proportional_feedback = 0;
     float previous_output = 0;
     static float duty_cycle = 0;
     static float integral_term = 0;
@@ -74,9 +83,9 @@ controlSig converter_out_regulator(float out_desired, int buck_state, float* glo
 
     if(en){
         integral_term = ((buck_state == last_buck_state) && (differential_abs<2.0f) && (!rst)) ? (integral_term + differential): 0;
-        //integral_term = min(max(integral_term, -anti_windup_clamp), anti_windup_clamp);
-        integral_correction = integral_term  * integral_feedback;
-        proportional_correction = (differential * proportional_feedback);
+        integral_term = min(max(integral_term, -anti_windup_clamp), anti_windup_clamp);
+        integral_correction = integral_feedback_factor  * integral_term;
+        proportional_correction = (differential * proportional_feedback_factor);
         correction_factor = integral_correction + proportional_correction;
         if(buck_state){
             duty_cycle = (input_voltage>0) ? min((max(out_desired, float(0)) / input_voltage), (float)1): 0;

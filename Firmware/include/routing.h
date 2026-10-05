@@ -4,7 +4,14 @@
 #include <stdlib.h>
 #include <driver/mcpwm.h>
 
-void set_routing_pins(uint8_t buck_switch_pin, uint8_t boost_switch_pin){
+#define DEADTIME_TICKS 1 //1 tick = 500ns
+
+void set_routing_pins(uint8_t buck_switch_pin, 
+    uint8_t boost_switch_pin, 
+    uint32_t enable_timer_res, 
+    uint32_t enable_switching_freq
+){
+
     mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0A, buck_switch_pin);
     mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0B, boost_switch_pin);
 
@@ -17,16 +24,16 @@ void set_routing_pins(uint8_t buck_switch_pin, uint8_t boost_switch_pin){
 
     mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_0, &buck_boost_switcher);
 
-    mcpwm_timer_set_resolution(MCPWM_UNIT_0, MCPWM_TIMER_0, 2000000);
+    mcpwm_timer_set_resolution(MCPWM_UNIT_0, MCPWM_TIMER_0, enable_timer_res);
 
-    mcpwm_set_frequency(MCPWM_UNIT_0, MCPWM_TIMER_0, 100000);
+    mcpwm_set_frequency(MCPWM_UNIT_0, MCPWM_TIMER_0, enable_switching_freq);
 
     mcpwm_deadtime_enable(
         MCPWM_UNIT_0,
         MCPWM_TIMER_0,
         MCPWM_ACTIVE_HIGH_COMPLIMENT_MODE,
-        1,
-        1
+        DEADTIME_TICKS,
+        DEADTIME_TICKS
     );
 }
 
@@ -35,9 +42,11 @@ struct converterState {
   uint8_t boost_state;
 };
 
-float set_input_voltage = 6.0 + ((float)rand() / (float)RAND_MAX) * (12.0 - 6.0);
-
-converterState route(float out_desired, long int anti_hysteresis_delay, float* global_input_val){
+converterState route(float out_desired, 
+    long int anti_hysteresis_delay, 
+    float* global_input_val
+){
+    
     converterState converter_state;
     static uint32_t last_switching_time = 0;
     static uint8_t buck_switch = 0;

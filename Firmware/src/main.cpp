@@ -12,28 +12,32 @@
 #define ADC_TIMEOUT_MS 5
 #define BUCK_ENABLE_PIN 14
 #define BOOST_ENABLE_PIN 27
-#define CONVERTER_CONTROL_PIN 12
+#define CONVERTER_CONTROL_PIN 13
 #define ANTI_HYSTERISIS_DELAY 20
 #define ANTI_WINDUP_CLAMP 2
 #define MAXIMUM_STEP_MAGNITUDE 1.0f
 #define MINIMUM_STEP_MAGNITUDE 0.1f
+#define INTEGRAL_FEEDBACK_FACTOR 0.0f
+#define PROPORTIONAL_FEEDBACK_FACTOR 0.0f
+#define MOS_SWITCHING_FREQ 100000
+#define ENABLE_TIMER_RES 2000000
+#define ENABLE_SWITCHING_FREQ 100000
 
-std::atomic<uint8_t> target_ready_flag(0);
-std::atomic<uint8_t> step_ready_flag(0);
+std::atomic<uint8_t> target_ready_flag(0); // This variable signals exists as a signal telling the core whether target_voltage is safe to read or if its currently being updated
+std::atomic<uint8_t> step_ready_flag(0); //This variable signals exists as a signal telling the core whether requested_step is safe to read or if its currently being updated
 
-float target_voltage = 5;
+float target_voltage = 0;
 float requested_step = 0;
 
 dac_oneshot_handle_t dac_handle;
 
 void setup() {
   // put your setup code here, to run once:
-  Serial.begin(115200);
   dac_oneshot_config_t cfg = { .chan_id = DAC_CHAN_0 }; // GPIO 25
   dac_oneshot_new_channel(&cfg, &dac_handle);
   set_adc_pins(INPUT_PROBE_CHANNEL_ADC1, OUTPUT_PROBE_CHANNEL_ADC1);
-  set_routing_pins(BUCK_ENABLE_PIN, BOOST_ENABLE_PIN);
-  set_converter_pins(INPUT_PROBE_CHANNEL_ADC1, OUTPUT_PROBE_CHANNEL_ADC1, CONVERTER_CONTROL_PIN);
+  set_routing_pins(BUCK_ENABLE_PIN, BOOST_ENABLE_PIN, ENABLE_TIMER_RES, ENABLE_SWITCHING_FREQ);
+  set_converter_pins(INPUT_PROBE_CHANNEL_ADC1, OUTPUT_PROBE_CHANNEL_ADC1, CONVERTER_CONTROL_PIN, MOS_SWITCHING_FREQ);
 }
 
 void loop() {
@@ -42,8 +46,6 @@ void loop() {
   static float global_output_val = 0;
   static uint8_t global_adc_buf[BUF_SIZE];
   static uint32_t copied_out_len = 0;
-  float random_float = (float)esp_random()/(float)UINT32_MAX;
-  float second_random_float = (float)esp_random()/(float)UINT32_MAX;
   static float out_desired = 0;
   static float local_target_voltage = 0;
   static float local_requested_step = 0;
@@ -63,9 +65,13 @@ void loop() {
 
   if(change) {
     float differential_pre = local_target_voltage-out_desired;
-    float step = (local_requested_step>0) ? min(max(local_requested_step, MINIMUM_STEP_MAGNITUDE), MAXIMUM_STEP_MAGNITUDE): (max(min(local_requested_step, -MINIMUM_STEP_MAGNITUDE), -MAXIMUM_STEP_MAGNITUDE));
+    float step = 
+    (local_requested_step>0) ? min(max(local_requested_step, MINIMUM_STEP_MAGNITUDE), MAXIMUM_STEP_MAGNITUDE): 
+    (max(min(local_requested_step, -MINIMUM_STEP_MAGNITUDE), -MAXIMUM_STEP_MAGNITUDE));
+    //The above line exists as a protection to clamp the step sizes between a minimum and maximum defined above (at the very top of the program).
     step = (differential_pre*step > 0) ? step: (step>0 ? -MINIMUM_STEP_MAGNITUDE: MINIMUM_STEP_MAGNITUDE);
     step = (differential_pre == 0) ? 0: step;
+    //These lines ensure the step moves the converter's output towards the target. In case it doesn't the system fixes a default rate of MINIMUM_STEP_MAGNITUDE in whichever direction the target is.
     float differential_post = (differential_pre-step);
     if((differential_post<0.05f && differential_post>(-0.05f))){
       change = 0;
@@ -74,12 +80,12 @@ void loop() {
       out_desired += step;
     }
   }
-  random_float = max(random_float, (float)0.90);
   read_adc(handle, global_adc_buf, BUF_SIZE, &copied_out_len, ADC_TIMEOUT_MS, &global_input_val, &global_output_val, INPUT_PROBE_CHANNEL_ADC1, OUTPUT_PROBE_CHANNEL_ADC1);
   converterState routing_state;
   float input = global_input_val;
   routing_state = route(out_desired, ANTI_HYSTERISIS_DELAY, &global_input_val);
   controlSig out_sig = {0.0f};
-  out_sig = converter_out_regulator(out_desired, routing_state.buck_state, &global_input_val, &global_output_val, ANTI_WINDUP_CLAMP, 0);
+  out_sig = converter_out_regulator(out_desired, routing_state.buck_state, &global_input_val, &global_output_val, ANTI_WINDUP_CLAMP, 0, INTEGRAL_FEEDBACK_FACTOR, PROPORTIONAL_FEEDBACK_FACTOR);
   dac_oneshot_output_voltage(dac_handle, (uint8_t)(out_sig.control_sig*255));
+  //The control signal is reflected on GPIO 25 through the inbuilt DAC.
 }
