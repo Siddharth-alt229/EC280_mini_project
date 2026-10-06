@@ -3,7 +3,7 @@
 #include "adc_setup.h"
 #include "routing.h"
 #include "converter_output_regulator.h"
-#include "esp_random.h"
+#include "route_ldo.h"
 #include <atomic>
 
 #define BUF_SIZE 128
@@ -22,6 +22,13 @@
 #define MOS_SWITCHING_FREQ 100000
 #define ENABLE_TIMER_RES 2000000
 #define ENABLE_SWITCHING_FREQ 100000
+#define V12_LDO_INPUT_PIN 10
+#define V5_LDO_INPUT_PIN 11
+#define TURNOVER_VOLTAGE 5.3f
+#define LDO_SWITCHER_TIMER_RES 2000000
+#define LDO_SWITCHER_FREQ 100000
+#define LDO_ANTI_HYSTERSIS_DELAY 0.1f
+
 
 std::atomic<uint8_t> target_ready_flag(0); // This variable signals exists as a signal telling the core whether target_voltage is safe to read or if its currently being updated
 std::atomic<uint8_t> step_ready_flag(0); //This variable signals exists as a signal telling the core whether requested_step is safe to read or if its currently being updated
@@ -33,11 +40,14 @@ dac_oneshot_handle_t dac_handle;
 
 void setup() {
   // put your setup code here, to run once:
+  pinMode(V12_LDO_INPUT_PIN, OUTPUT);
+  pinMode(V5_LDO_INPUT_PIN, OUTPUT);
   dac_oneshot_config_t cfg = { .chan_id = DAC_CHAN_0 }; // GPIO 25
   dac_oneshot_new_channel(&cfg, &dac_handle);
   set_adc_pins(INPUT_PROBE_CHANNEL_ADC1, OUTPUT_PROBE_CHANNEL_ADC1);
   set_routing_pins(BUCK_ENABLE_PIN, BOOST_ENABLE_PIN, ENABLE_TIMER_RES, ENABLE_SWITCHING_FREQ);
   set_converter_pins(INPUT_PROBE_CHANNEL_ADC1, OUTPUT_PROBE_CHANNEL_ADC1, CONVERTER_CONTROL_PIN, MOS_SWITCHING_FREQ);
+  set_ldo_routing_pins(V12_LDO_INPUT_PIN, V5_LDO_INPUT_PIN, LDO_SWITCHER_TIMER_RES, LDO_SWITCHER_FREQ);
 }
 
 void loop() {
@@ -82,10 +92,10 @@ void loop() {
   }
   read_adc(handle, global_adc_buf, BUF_SIZE, &copied_out_len, ADC_TIMEOUT_MS, &global_input_val, &global_output_val, INPUT_PROBE_CHANNEL_ADC1, OUTPUT_PROBE_CHANNEL_ADC1);
   converterState routing_state;
-  float input = global_input_val;
   routing_state = route(out_desired, ANTI_HYSTERISIS_DELAY, &global_input_val);
   controlSig out_sig = {0.0f};
   out_sig = converter_out_regulator(out_desired, routing_state.buck_state, &global_input_val, &global_output_val, ANTI_WINDUP_CLAMP, 0, INTEGRAL_FEEDBACK_FACTOR, PROPORTIONAL_FEEDBACK_FACTOR);
+  route_ldo(&global_output_val, TURNOVER_VOLTAGE, LDO_ANTI_HYSTERSIS_DELAY);
   dac_oneshot_output_voltage(dac_handle, (uint8_t)(out_sig.control_sig*255));
   //The control signal is reflected on GPIO 25 through the inbuilt DAC.
 }
