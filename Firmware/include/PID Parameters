@@ -1,0 +1,49 @@
+// --- PID Parameters & Constraints ---
+#define K_P 0.15f            // Proportional gain (adjusts voltage based on current temp error)
+#define K_I 0.01f            // Integral gain (eliminates steady-state offset over time)
+#define K_D 0.05f            // Derivative gain (reacts to how quickly temp is rising)
+
+#define TEMP_SETPOINT 30.0f  // Target ideal temperature in °C
+#define MIN_FAN_VOLTAGE 3.3f // Minimum starting voltage to turn fan blades
+#define MAX_FAN_VOLTAGE 12.0f// Maximum allowable fan voltage
+#define BASE_VOLTAGE 5.0f    // Baseline operating voltage at setpoint
+
+/**
+ * Calculates output voltage for the fan based on temperature using PID control.
+ * 
+ * @param current_temp Temperature reading from ESP32 sensor (°C)
+ * @param dt Time elapsed since last calculation in seconds (e.g., 0.1 for 100ms)
+ * @return float Target voltage needed for the fan
+ */
+float compute_pid_fan_voltage(float current_temp, float dt) {
+    static float integral_error = 0.0f;
+    static float previous_temp = TEMP_SETPOINT;
+
+    // 1. Calculate temperature difference (Error)
+    float error = current_temp - TEMP_SETPOINT;
+
+    // 2. Proportional term
+    float p_term = K_P * error;
+
+    // 3. Integral term with anti-windup clamp
+    integral_error += error * dt;
+    integral_error = min(max(integral_error, -50.0f), 50.0f);
+    float i_term = K_I * integral_error;
+
+    // 4. Derivative term
+    float derivative = (current_temp - previous_temp) / dt;
+    float d_term = K_D * derivative;
+
+    previous_temp = current_temp;
+
+    // 5. Total PID voltage sum
+    float raw_voltage = BASE_VOLTAGE + p_term + i_term + d_term;
+
+    // 6. Shutdown threshold & voltage output limits
+    if (current_temp < TEMP_SETPOINT - 2.0f) {
+        integral_error = 0.0f; // Reset integral term when cool
+        return 0.0f;
+    }
+
+    return min(max(raw_voltage, MIN_FAN_VOLTAGE), MAX_FAN_VOLTAGE);
+}
